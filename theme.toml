@@ -1,0 +1,19 @@
+# Solvee Theme Configuration
+# You can customize the look and feel of the calculator here.
+
+[color]
+background_color = "#1E1E1E"
+
+# Input Text Colors
+text_color       = "#ABB2BF"  # General text / comments
+number_color     = "#D19A66"  # Numbers
+operator_color   = "#56B6C2"  # Operators (+, -, *, /)
+variable_color   = "#C678DD"  # Variable names
+assignment_color = "#E06C75"  # The '==' symbol
+
+# Output Text Color
+result_color     = "#98C379"  # Calculation results
+
+[font]
+family = "CaskaydiaCove Nerd Font" # Ensure this font is installed or change it
+size = 14
