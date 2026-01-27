@@ -28,7 +28,7 @@ You need **Python 3** installed on your system.
 
 ### 1. Clone the repository
 ```bash
-git clone [https://github.com/GiuseppeAngenica/Solvee.git](https://github.com/GiuseppeAngenica/Solvee.git)
+git clone https://github.com/GiuseppeAngenica/Solvee.git
 cd Solvee
 ```
 
@@ -39,7 +39,7 @@ pip install -r requirements.txt
 ```
 (On Arch Linux, you can also install `python-pyside6` and `python-toml` via pacman).
 
-###3. Run Solvee
+### 3. Run Solvee
 ```bash
 python solvee.py
 ```
