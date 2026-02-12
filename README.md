@@ -92,8 +92,9 @@ size = 14
 * [x] Variable assignments (==)
 * [x] Syntax Highlighting
 * [x] Theme Configuration via TOML
-* [ ] Percentage calculations (e.g., 100 + 20%)
-* [ ] Unit Conversions (Currency, Length, etc.)
+* [x] Percentage calculations (e.g., 100 + 20%)
+* [x] Unit Conversions (Weight, Length, etc.)
+* [ ] Currency conversion
 * [ ] Smart text ignoring (Natural Language Processing)
 
 ## 🤝 Contributing
