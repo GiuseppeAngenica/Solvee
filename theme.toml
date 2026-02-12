@@ -10,7 +10,8 @@ number_color     = "#D19A66"  # Numbers
 operator_color   = "#56B6C2"  # Operators (+, -, *, /)
 variable_color   = "#C678DD"  # Variable names
 assignment_color = "#E06C75"  # The '==' symbol
-
+unit_color       = "#8DB600"  # 'kg', 'm', 'celsius'
+keyword_color    = "#007FFF"  # 'to', 'in'
 # Output Text Color
 result_color     = "#98C379"  # Calculation results
 
