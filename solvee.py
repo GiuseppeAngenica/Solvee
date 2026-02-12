@@ -1,6 +1,7 @@
 import sys
 import math
 import toml
+import re
 from pathlib import Path
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget,
                                QHBoxLayout, QPlainTextEdit)
@@ -8,8 +9,15 @@ from PySide6.QtGui import (QColor, QFont, QSyntaxHighlighter,
                            QTextCharFormat)
 from PySide6.QtCore import Qt, QRegularExpression
 
-# --- DEFAULT CONFIGURATION ---
-# Fallback configuration used if 'theme.toml' is missing or corrupted.
+# --- DIPENDENZE ---
+try:
+    import pint
+    ureg = pint.UnitRegistry()
+    ureg.formatter.default_format = '.2f'
+except ImportError:
+    ureg = None
+
+# --- CONFIGURAZIONE ---
 DEFAULT_CONFIG = {
     "color": {
         "background_color": "#1E1E1E",
@@ -19,6 +27,9 @@ DEFAULT_CONFIG = {
         "variable_color":   "#C678DD",
         "assignment_color": "#E06C75",
         "result_color":     "#98C379",
+        "unit_color":       "#D19A66",
+        "keyword_color":    "#C678DD",
+        "placeholder_color": "#5C6370" # Colore grigio scuro per il placeholder
     },
     "font": {
         "family":      "CaskaydiaCove Nerd Font",
@@ -27,193 +38,152 @@ DEFAULT_CONFIG = {
 }
 
 def load_config():
-    """
-    Loads the configuration from 'theme.toml'.
-    Returns DEFAULT_CONFIG if the file is missing or invalid.
-    """
-    config_path = Path("theme.toml")
-    if config_path.exists():
-        try:
-            with open(config_path, "r") as f:
-                return toml.load(f)
-        except Exception as e:
-            print(f"Warning: Could not load theme.toml ({e}). Using default theme.")
+    paths = [Path("theme.toml"), Path("/usr/share/solvee/theme.toml"), Path.home() / ".config/solvee/theme.toml"]
+    for p in paths:
+        if p.exists():
+            try:
+                with open(p, "r") as f: return toml.load(f)
+            except: continue
     return DEFAULT_CONFIG
 
-# Load configuration at application startup
 CONFIG = load_config()
 
 class SolveeHighlighter(QSyntaxHighlighter):
-    """
-    Handles syntax highlighting for the calculator input editor.
-    Applies color rules defined in the loaded configuration.
-    """
     def __init__(self, document):
         super().__init__(document)
         self.rules = []
-        
-        colors = CONFIG.get("color", DEFAULT_CONFIG["color"])
+        c = CONFIG.get("color", DEFAULT_CONFIG["color"])
 
-        # 1. Rule for NUMBERS (integers and floats, e.g., 10, 3.14)
-        num_fmt = QTextCharFormat()
-        num_fmt.setForeground(QColor(colors["number_color"]))
-        self.rules.append((QRegularExpression(r"\b\d+(\.\d+)?\b"), num_fmt))
+        def add_rule(pattern, color, bold=False, italic=False):
+            fmt = QTextCharFormat()
+            fmt.setForeground(QColor(color))
+            if bold: fmt.setFontWeight(QFont.Bold)
+            if italic: fmt.setFontItalic(True)
+            self.rules.append((QRegularExpression(pattern), fmt))
 
-        # 2. Rule for OPERATORS and SYMBOLS (+ - * / % ^ ( ))
-        op_fmt = QTextCharFormat()
-        op_fmt.setForeground(QColor(colors["operator_color"]))
-        self.rules.append((QRegularExpression(r"[\+\-\*\/\%\^\(\)]"), op_fmt))
-
-        # 3. Rule for ASSIGNMENT OPERATOR (==)
-        # Note: We use '==' for assignment to distinguish from result output.
-        assign_fmt = QTextCharFormat()
-        assign_fmt.setForeground(QColor(colors["assignment_color"]))
-        assign_fmt.setFontWeight(QFont.Bold)
-        self.rules.append((QRegularExpression(r"=="), assign_fmt))
-
-        # 4. Rule for VARIABLE NAMES (identifiers following '==')
-        # Uses a lookbehind assertion to identify text immediately after '=='
-        var_fmt = QTextCharFormat()
-        var_fmt.setForeground(QColor(colors["variable_color"]))
-        var_fmt.setFontItalic(True)
-        self.rules.append((QRegularExpression(r"(?<===)\s*[a-zA-Z_]\w*"), var_fmt))
+        add_rule(r"\b\d+(\.\d+)?\b", c["number_color"])
+        add_rule(r"[\+\-\*\/\%\^\(\)]", c["operator_color"])
+        add_rule(r"==", c["assignment_color"], bold=True)
+        add_rule(r"\b(to|in)\b", c["keyword_color"], bold=True)
+        # Unità: cattura lettere e il simbolo del grado
+        add_rule(r"(?<=\d)\s*[a-zA-Z°]+|[a-zA-Z°]+(?=\s+(to|in))|(?<=(to|in)\s)[a-zA-Z°]+", c["unit_color"], italic=True)
+        add_rule(r"(?<===)\s*[a-zA-Z_]\w*", c["variable_color"], italic=True)
 
     def highlightBlock(self, text):
-        """Applies the highlighting rules to the current block of text."""
         for pattern, fmt in self.rules:
             match_iter = pattern.globalMatch(text)
             while match_iter.hasNext():
-                match = match_iter.next()
-                self.setFormat(match.capturedStart(), match.capturedLength(), fmt)
-
+                m = match_iter.next()
+                self.setFormat(m.capturedStart(), m.capturedLength(), fmt)
 
 class SolveeCalculator(QMainWindow):
-    """
-    Main Application Window.
-    Features a dual-pane layout: Input (Editor) on the left and Output (Display) on the right.
-    """
     def __init__(self):
         super().__init__()
+        self.setWindowTitle("Solvee v1.2.5")
+        self.resize(700, 500)
+        c = CONFIG.get("color", DEFAULT_CONFIG["color"])
+        f = CONFIG.get("font", DEFAULT_CONFIG["font"])
 
-        self.setWindowTitle("Solvee v1.1")
-        self.resize(600, 450)
-
-        # Extract config values for easier access within the class
-        c_conf = CONFIG.get("color", DEFAULT_CONFIG["color"])
-        f_conf = CONFIG.get("font", DEFAULT_CONFIG["font"])
-
-        # Apply Global Stylesheet
+        # CSS migliorato per mostrare il placeholder
         self.setStyleSheet(f"""
-            QMainWindow {{ background-color: {c_conf['background_color']}; }}
+            QMainWindow {{ background-color: {c['background_color']}; }}
             QPlainTextEdit {{
-                background-color: {c_conf['background_color']};
+                background-color: {c['background_color']};
+                color: {c['text_color']};
                 border: none;
-                font-family: '{f_conf['family']}';
-                font-size: {f_conf['size']}pt;
+                font-family: '{f['family']}';
+                font-size: {f['size']}pt;
             }}
         """)
 
-        # Main Layout Setup
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QHBoxLayout(central_widget)
-        layout.setContentsMargins(25, 25, 25, 25)
-        layout.setSpacing(15)
+        central = QWidget()
+        self.setCentralWidget(central)
+        layout = QHBoxLayout(central)
+        layout.setContentsMargins(20, 20, 20, 20)
 
-        # --- INPUT EDITOR (Left Pane) ---
         self.input_editor = QPlainTextEdit()
-        self.input_editor.setStyleSheet(f"color: {c_conf['text_color']};")
-        self.input_editor.setPlaceholderText("Type here... (e.g. 10 * 5)")
+        # SET PLACEHOLDER E COLORE (Tramite CSS specifico se necessario)
+        self.input_editor.setPlaceholderText("Esempi:\n100 + 22%\n25 ml to tablespoon\nx == 10\nx * 5")
         
-        # Attach Syntax Highlighter to the input document
         self.highlighter = SolveeHighlighter(self.input_editor.document())
 
-        # --- OUTPUT DISPLAY (Right Pane) ---
         self.output_display = QPlainTextEdit()
         self.output_display.setReadOnly(True)
-        self.output_display.setStyleSheet(f"color: {c_conf['result_color']};")
-        self.output_display.setLayoutDirection(Qt.RightToLeft) # Align results to the right
-        self.output_display.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.output_display.setStyleSheet(f"color: {c['result_color']};")
+        self.output_display.setLayoutDirection(Qt.RightToLeft)
 
-        # Add widgets to layout (60% width for Input, 40% width for Output)
-        layout.addWidget(self.input_editor, 60)
-        layout.addWidget(self.output_display, 40)
+        layout.addWidget(self.input_editor, 65)
+        layout.addWidget(self.output_display, 35)
 
-        # --- SIGNALS & SLOTS ---
-        # Trigger recalculation whenever the input text changes
         self.input_editor.textChanged.connect(self.calculate)
-        
-        # Synchronize Vertical Scrolling between both panes
         self.input_editor.verticalScrollBar().valueChanged.connect(
             self.output_display.verticalScrollBar().setValue
         )
-        self.output_display.verticalScrollBar().valueChanged.connect(
-            self.input_editor.verticalScrollBar().setValue
-        )
 
     def calculate(self):
-        """
-        Parses the input line by line, maintaining a persistent variable scope
-        from top to bottom, and updates the output pane in real-time.
-        """
-        input_text = self.input_editor.toPlainText()
-        lines = input_text.split('\n')
+        lines = self.input_editor.toPlainText().split('\n')
         results = []
-        
-        # Initialize variable scope with standard math functions.
-        # The scope is reset on every keystroke to ensure clean recalculation from the top.
         scope = {k: v for k, v in math.__dict__.items() if not k.startswith("__")}
         
         for line in lines:
-            clean_line = line.strip()
-            if not clean_line:
-                results.append("")
-                continue
-            
+            clean = line.strip()
+            if not clean:
+                results.append(""); continue
             try:
-                # CASE 1: Variable Assignment
-                # Syntax: expression == variable_name (e.g., "10 + 5 == x")
-                if "==" in clean_line:
-                    expr, var_name = clean_line.split("==", 1)
-                    expr = expr.strip().replace("^", "**") # Support caret for exponentiation
-                    var_name = var_name.strip()
-                    
-                    if var_name.isidentifier():
-                        # Calculate expression and store result in the scope
-                        val = eval(expr, {"__builtins__": {}}, scope)
-                        scope[var_name] = val
-                        results.append(self.format_result(val))
-                    else:
-                        results.append("Error: Invalid Name")
+                # 1. TENTA CONVERSIONE (Gestione speciale Temperature)
+                conv = self.try_conversion(clean, scope)
+                if conv:
+                    results.append(conv); continue
 
-                # CASE 2: Standard Expression Evaluation
-                # Syntax: expression (e.g., "x * 2")
+                # 2. CALCOLO STANDARD
+                proc_line = self.handle_percentages(clean)
+                if "==" in proc_line:
+                    expr, var = proc_line.split("==", 1)
+                    val = eval(expr.strip().replace("^", "**"), {"__builtins__": {}}, scope)
+                    scope[var.strip()] = val
+                    results.append(self.format_result(val))
                 else:
-                    expr = clean_line.replace("^", "**")
-                    # 'scope' contains both math functions and user-defined variables
-                    res = eval(expr, {"__builtins__": {}}, scope)
+                    res = eval(proc_line.replace("^", "**"), {"__builtins__": {}}, scope)
                     results.append(self.format_result(res))
-                    
-            except Exception:
-                # Silently suppress errors to avoid UI clutter while the user is still typing.
-                # This mimics the behavior of Numi or Soulver.
+            except:
                 results.append("") 
 
         self.output_display.setPlainText('\n'.join(results))
+
+    def try_conversion(self, text, scope):
+        if not ureg: return None
+        # Supporto temperature e unità comuni
+        t = text.replace("°C", " celsius").replace("°F", " fahrenheit").replace("°", "")
+        parts = re.split(r'\s+(?:to|in)\s+', t, flags=re.IGNORECASE)
+        if len(parts) < 2: return None
         
-        # Restore scroll position after updating the text to prevent jumping
-        self.output_display.verticalScrollBar().setValue(
-            self.input_editor.verticalScrollBar().value()
-        )
+        src_txt, target = " ".join(parts[:-1]).strip(), parts[-1].strip()
+        try:
+            for v_n, v_v in scope.items():
+                if isinstance(v_v, (int, float)):
+                    src_txt = re.sub(rf'\b{v_n}\b', str(v_v), src_txt)
+            
+            # Pint parse
+            src_qty = ureg.parse_expression(src_txt)
+            # Gestione temperatura (Pint vuole unità specifiche per scalari)
+            result = src_qty.to(target)
+            
+            # Pulizia etichetta finale
+            label = target.replace("celsius", "°C").replace("fahrenheit", "°F")
+            return f"{self.format_result(result.magnitude)} {label}"
+        except:
+            return None
+
+    def handle_percentages(self, text):
+        text = re.sub(r'(\w+)\s*\+\s*(\d+)%', r'\1 * (1 + \2/100)', text)
+        text = re.sub(r'(\w+)\s*\-\s*(\d+)%', r'\1 * (1 - \2/100)', text)
+        text = re.sub(r'(\d+)%', r'(\1/100)', text)
+        return text
 
     def format_result(self, val):
-        """
-        Helper method to format numerical results cleanly.
-        Integers appear without decimals; floats are limited to 2 decimal places.
-        """
         if isinstance(val, (int, float)):
             return str(int(val)) if val == int(val) else f"{val:.2f}"
-        return ""
+        return str(val)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
